@@ -1,0 +1,103 @@
+version: '3'
+services:
+  api-error:
+    container_name: api-error
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    image: error-api:latest
+    ports:
+      - 8080:8080
+#    depends_on:
+#      - otel-collector
+#      - kafka
+#      - elasticsearch
+    networks:
+      - rede
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: collector
+    volumes:
+      - ./otel-agent/otel-config.yaml:/etc/otel-collector-config.yaml
+    depends_on:
+      - kafka
+    ports:
+      - 4317:4317 # OTLP gRPC receiver
+      - 4318:4318 # OTLP http receiver
+    command: ["--config", "/etc/otel-collector-config.yaml"]
+    networks:
+      - rede
+
+  elasticsearch:
+    container_name: elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.15.0
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    networks:
+      - rede
+    depends_on:
+      - kafka
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:7.15.0
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - rede
+
+  logstash:
+    container_name: logstash
+    image: docker.elastic.co/logstash/logstash:7.15.0
+    volumes:
+      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    environment:
+      - ELASTICSEARCH_HOST=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - rede
+
+  kafka:
+    container_name: kafka
+    image: confluentinc/cp-kafka:7.0.0
+    hostname: kafka
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    networks:
+      - rede
+    depends_on:
+      - zookeeper
+
+  zookeeper:
+    container_name: zookeeper
+    image: confluentinc/cp-zookeeper:6.2.0
+    hostname: zookeeper
+    ports:
+      - 2181:2181
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+    networks:
+      - rede
+  
+networks:
+  rede:
+    driver: bridge
