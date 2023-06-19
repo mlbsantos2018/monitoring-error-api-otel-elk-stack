@@ -1,0 +1,24 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: collector:4317
+
+processors:
+  batch:
+  
+exporters:
+  kafka:
+    brokers:
+      - kafka:9092
+    topic: teste
+    encoding: otlp_json
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [kafka]
+
+      
